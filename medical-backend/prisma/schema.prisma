@@ -1,0 +1,121 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- MODÈLES DE DONNÉES ---
+
+model User {
+  id            String        @id @default(uuid())
+  firstName     String
+  lastName      String
+  email         String        @unique
+  passwordHash  String
+  role          Role          @default(SECRETARY)
+  createdAt     DateTime      @default(now())
+  
+  appointments  Appointment[] // Un médecin peut avoir plusieurs rendez-vous
+}
+
+model Patient {
+  id             String        @id @default(uuid())
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime
+  gender         Gender
+  phone          String?
+  address        String?
+  medicalHistory String?       @db.Text
+  allergies      String?       @db.Text
+  createdAt      DateTime      @default(now())
+  
+  appointments   Appointment[]
+  consultations  Consultation[]
+  invoices       Invoice[]
+}
+
+model Appointment {
+  id           String        @id @default(uuid())
+  patientId    String
+  userId       String
+  dateTime     DateTime
+  reason       String?
+  status       ApptStatus    @default(SCHEDULED)
+  
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  doctor       User          @relation(fields: [userId], references: [id])
+  consultation Consultation? // Un RDV peut aboutir à une consultation (relation 1-1)
+}
+
+model Consultation {
+  id            String        @id @default(uuid())
+  appointmentId String        @unique
+  patientId     String
+  symptoms      String?       @db.Text
+  diagnosis     String?       @db.Text
+  notes         String?       @db.Text
+  createdAt     DateTime      @default(now())
+  
+  appointment   Appointment   @relation(fields: [appointmentId], references: [id])
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  prescriptions Prescription[]
+  invoices      Invoice[]
+}
+
+model Prescription {
+  id                String       @id @default(uuid())
+  consultationId    String
+  medicationDetails Json         // Stocke la liste des médicaments au format JSON
+  createdAt         DateTime     @default(now())
+  
+  consultation      Consultation @relation(fields: [consultationId], references: [id])
+}
+
+model Invoice {
+  id             String       @id @default(uuid())
+  patientId      String
+  consultationId String
+  amount         Decimal      @db.Decimal(10, 2)
+  paymentStatus  PayStatus    @default(PENDING)
+  paymentMethod  PayMethod?
+  createdAt      DateTime     @default(now())
+  
+  patient        Patient      @relation(fields: [patientId], references: [id])
+  consultation   Consultation @relation(fields: [consultationId], references: [id])
+}
+
+// --- ÉNUMÉRATIONS ---
+
+enum Role {
+  DOCTOR
+  SECRETARY
+}
+
+enum Gender {
+  M
+  F
+}
+
+enum ApptStatus {
+  SCHEDULED
+  WAITING
+  COMPLETED
+  CANCELED
+}
+
+enum PayStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum PayMethod {
+  CASH
+  CARD
+  INSURANCE
+}
