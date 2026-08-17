@@ -12,6 +12,10 @@ app.use(express.json());
 // Branchement de nos routes d'authentification
 app.use('/api/auth', authRoutes);
 
+// Branchement des routes patients
+const patientRoutes = require('./features/patients/patient.routes');
+app.use('/api/patients', patientRoutes);
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'API du cabinet médical opérationnelle' });
 });

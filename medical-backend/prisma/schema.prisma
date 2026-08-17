@@ -23,20 +23,27 @@ model User {
 }
 
 model Patient {
-  id             String        @id @default(uuid())
-  firstName      String
-  lastName       String
-  dateOfBirth    DateTime
-  gender         Gender
-  phone          String?
-  address        String?
-  medicalHistory String?       @db.Text
-  allergies      String?       @db.Text
-  createdAt      DateTime      @default(now())
+  id                String        @id @default(uuid())
+  cin               String        @unique
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime
+  gender            Gender
+  phone             String?
+  email             String?
+  address           String?
+  mutuelle          String?
+  bloodGroup        String?
+  medicalHistory    String?       @db.Text
+  chronicConditions String?       @db.Text
+  allergies         String?       @db.Text
+  status            PatientStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
   
-  appointments   Appointment[]
-  consultations  Consultation[]
-  invoices       Invoice[]
+  appointments      Appointment[]
+  consultations     Consultation[]
+  invoices          Invoice[]
 }
 
 model Appointment {
@@ -118,4 +125,9 @@ enum PayMethod {
   CASH
   CARD
   INSURANCE
+}
+
+enum PatientStatus {
+  ACTIVE
+  ARCHIVED
 }
