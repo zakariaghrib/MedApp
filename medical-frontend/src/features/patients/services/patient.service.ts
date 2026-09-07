@@ -11,8 +11,8 @@ const apiClient = axios.create({
 });
 
 export const patientService = {
-  async getAll() {
-    const response = await apiClient.get('/');
+  async getAll(params?: Record<string, any>) {
+    const response = await apiClient.get('/', { params });
     return response.data;
   },
 
@@ -33,6 +33,11 @@ export const patientService = {
 
   async archive(id: string) {
     const response = await apiClient.patch(`/${id}/archive`);
+    return response.data;
+  },
+
+  async delete(id: string) {
+    const response = await apiClient.delete(`/${id}`);
     return response.data;
   }
 };

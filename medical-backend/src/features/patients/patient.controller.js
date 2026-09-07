@@ -30,8 +30,12 @@ class PatientController {
 
   async getAll(req, res) {
     try {
-      const patients = await patientService.getAllPatients();
-      return res.status(200).json({ success: true, data: patients });
+      const result = await patientService.getAllPatients(req.query);
+      return res.status(200).json({
+        success: true,
+        data: result.data,
+        meta: result.meta
+      });
     } catch (error) {
       return res.status(500).json({ success: false, message: 'Erreur serveur', error: error.message });
     }
@@ -80,6 +84,21 @@ class PatientController {
         success: true,
         message: 'Patient archivé avec succès',
         data: patient
+      });
+    } catch (error) {
+      if (error.message === 'Patient non trouvé') {
+        return res.status(404).json({ success: false, message: error.message });
+      }
+      return res.status(500).json({ success: false, message: 'Erreur serveur', error: error.message });
+    }
+  }
+
+  async delete(req, res) {
+    try {
+      await patientService.deletePatient(req.params.id);
+      return res.status(200).json({
+        success: true,
+        message: 'Patient supprimé avec succès'
       });
     } catch (error) {
       if (error.message === 'Patient non trouvé') {

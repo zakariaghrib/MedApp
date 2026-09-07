@@ -2,44 +2,50 @@ import { useState, useMemo, useId } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  getFacetedMinMaxValues,
   flexRender,
   type ColumnDef,
   type ColumnFiltersState,
   type SortingState,
-  type Column
+  type Column,
+  type PaginationState
 } from '@tanstack/react-table'
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, SearchIcon, MoreHorizontal, Eye, Edit, Trash2 } from 'lucide-react'
+import { Plus, SearchIcon, MoreHorizontal, Eye, Edit, Ban, CheckCircle, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { patientService } from '../services/patient.service'
 import { PatientForm } from './PatientForm'
 import { Patient } from '../schemas/patient.schema'
 import { Badge } from '@/components/ui/badge'
+import { useDebounce } from '@/hooks/use-debounce'
 
 const PatientActions = ({ patient }: { patient: Patient }) => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => patientService.archive(id),
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string, status: string }) => patientService.update(id, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
     }
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => patientService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['patients'] });
+    }
+  });
+
+  const isActive = patient.status === 'ACTIVE';
 
   return (
     <>
@@ -59,9 +65,22 @@ const PatientActions = ({ patient }: { patient: Patient }) => {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem 
+            className={isActive ? "text-amber-600 focus:text-amber-600" : "text-green-600 focus:text-green-600"}
+            onClick={() => {
+              const actionName = isActive ? 'désactiver' : 'réactiver';
+              if (window.confirm(`Êtes-vous sûr de vouloir ${actionName} ce patient ?`)) {
+                if (patient.id) statusMutation.mutate({ id: patient.id, status: isActive ? 'ARCHIVED' : 'ACTIVE' });
+              }
+            }}
+          >
+            {isActive ? <Ban className="mr-2 h-4 w-4" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+            {isActive ? 'Désactiver' : 'Réactiver'}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem 
             className="text-red-600 focus:text-red-600"
             onClick={() => {
-              if (window.confirm('Êtes-vous sûr de vouloir supprimer ce patient ?')) {
+              if (window.confirm('Êtes-vous sûr de vouloir supprimer définitivement ce patient ? Cette action est irréversible.')) {
                 if (patient.id) deleteMutation.mutate(patient.id);
               }
             }}
@@ -73,7 +92,7 @@ const PatientActions = ({ patient }: { patient: Patient }) => {
       </DropdownMenu>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Modifier le patient</DialogTitle>
             <DialogDescription>
@@ -111,9 +130,10 @@ const columns: ColumnDef<Patient>[] = [
     },
     cell: ({ row }) => {
       const status = row.getValue('status') as string;
+      const isActive = status === 'ACTIVE';
       return (
-        <Badge variant={status === 'Actif' ? 'default' : 'secondary'} className={status === 'Actif' ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}>
-          {status}
+        <Badge variant={isActive ? 'default' : 'secondary'} className={isActive ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}>
+          {isActive ? 'Actif' : 'Non Actif'}
         </Badge>
       );
     }
@@ -130,21 +150,44 @@ export function PatientsList() {
   const [globalFilter, setGlobalFilter] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
+  const debouncedSearch = useDebounce(globalFilter, 500)
+
   const [sorting, setSorting] = useState<SortingState>([
     {
-      id: 'lastName',
-      desc: false
+      id: 'createdAt',
+      desc: true
     }
   ])
 
-  const { data: response } = useQuery({
-    queryKey: ['patients'],
-    queryFn: () => patientService.getAll()
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0, // Zero-based internally in Tanstack
+    pageSize: 10,
+  })
+
+  // Extract status filter for the API call
+  const statusFilter = columnFilters.find(f => f.id === 'status')?.value as string;
+
+  const queryParams = useMemo(() => {
+    return {
+      page: pagination.pageIndex + 1, // API expects 1-based page
+      limit: pagination.pageSize,
+      search: debouncedSearch,
+      status: statusFilter,
+      sortBy: sorting[0]?.id,
+      sortOrder: sorting[0]?.desc ? 'desc' : 'asc'
+    }
+  }, [pagination.pageIndex, pagination.pageSize, debouncedSearch, statusFilter, sorting])
+
+  const { data: response, isLoading } = useQuery({
+    queryKey: ['patients', queryParams],
+    queryFn: () => patientService.getAll(queryParams)
   })
 
   const patients = useMemo(() => {
     return response?.data || []
   }, [response])
+
+  const meta = response?.meta
 
   const table = useReactTable({
     data: patients,
@@ -152,22 +195,23 @@ export function PatientsList() {
     state: {
       sorting,
       columnFilters,
-      globalFilter
+      globalFilter,
+      pagination
     },
+    pageCount: meta?.totalPages ?? -1,
+    onPaginationChange: setPagination,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
-    getFacetedMinMaxValues: getFacetedMinMaxValues(),
     onSortingChange: setSorting,
+    manualPagination: true,
+    manualSorting: true,
+    manualFiltering: true,
     enableSortingRemoval: false
   })
 
   return (
-    <div className='w-full space-y-8'>
+    <div className='w-full space-y-8 pb-12'>
       
       {/* 1. EN-TÊTE DE LA PAGE */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -181,7 +225,7 @@ export function PatientsList() {
             <Plus className="mr-2 h-4 w-4" />
             Nouveau Patient
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Créer un nouveau patient</DialogTitle>
               <DialogDescription>
@@ -214,15 +258,24 @@ export function PatientsList() {
         
       {/* 3. BLOC TABLEAU */}
       <div className='w-full border border-slate-200 rounded-xl overflow-hidden'>
-        <div className='overflow-x-auto'>
+        <div className='overflow-x-auto relative'>
+          {isLoading && (
+            <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          )}
           <Table>
             <TableHeader>
             {table.getHeaderGroups().map(headerGroup => (
               <TableRow key={headerGroup.id} className='hover:bg-transparent border-b-slate-200'>
                 {headerGroup.headers.map(header => {
                   return (
-                    <TableHead key={header.id} className='relative h-12 text-xs uppercase tracking-wider font-bold text-slate-500'>
+                    <TableHead key={header.id} className='relative h-12 text-xs uppercase tracking-wider font-bold text-slate-500 cursor-pointer select-none' onClick={header.column.getToggleSortingHandler()}>
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      {{
+                        asc: ' 🔼',
+                        desc: ' 🔽',
+                      }[header.column.getIsSorted() as string] ?? null}
                     </TableHead>
                   )
                 })}
@@ -243,22 +296,47 @@ export function PatientsList() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className='h-32 text-center text-slate-500'>
-                  <div className="flex flex-col items-center justify-center">
-                    <SearchIcon className="h-8 w-8 text-slate-300 mb-3" />
-                    <p className="text-base font-medium text-slate-900">Aucun patient trouvé</p>
-                    <p className="text-sm">Essayez de modifier vos critères de recherche.</p>
-                  </div>
+                  {!isLoading && (
+                    <div className="flex flex-col items-center justify-center">
+                      <SearchIcon className="h-8 w-8 text-slate-300 mb-3" />
+                      <p className="text-base font-medium text-slate-900">Aucun patient trouvé</p>
+                      <p className="text-sm">Essayez de modifier vos critères de recherche.</p>
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             )}
             </TableBody>
           </Table>
         </div>
-        {/* Pied de la carte : Compteur */}
-        <div className='p-4 border-t border-slate-200 text-sm text-slate-500 flex items-center justify-between'>
-          <span>
-            Affichage de <span className="font-semibold text-slate-900">{table.getFilteredRowModel().rows.length}</span> patient(s)
-          </span>
+        {/* Pied de la carte : Pagination */}
+        <div className='p-4 border-t border-slate-200 text-sm text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-4'>
+          <div>
+            Affichage de <span className="font-semibold text-slate-900">{patients.length}</span> patient(s) sur <span className="font-semibold text-slate-900">{meta?.total || 0}</span> au total
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Précédent
+            </Button>
+            <div className="text-sm font-medium">
+              Page {table.getState().pagination.pageIndex + 1} sur {table.getPageCount()}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -271,80 +349,28 @@ function Filter({ column }: { column: Column<Patient, unknown> }) {
   const { filterVariant } = column.columnDef.meta ?? {}
   const columnHeader = typeof column.columnDef.header === 'string' ? column.columnDef.header : ''
 
-  const sortedUniqueValues = useMemo(() => {
-    if (filterVariant === 'range') return []
-
-    const values = Array.from(column.getFacetedUniqueValues().keys())
-
-    const flattenedValues = values.reduce((acc: string[], curr) => {
-      if (Array.isArray(curr)) {
-        return [...acc, ...curr]
-      }
-
-      return [...acc, curr]
-    }, [])
-
-    return Array.from(new Set(flattenedValues)).sort()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [column.getFacetedUniqueValues(), filterVariant])
-
-  if (filterVariant === 'range') {
-    return (
-      <div className='*:not-first:mt-2'>
-        <Label className="text-slate-600">{columnHeader}</Label>
-        <div className='flex'>
-          <Input
-            id={`${id}-range-1`}
-            className='flex-1 rounded-r-none [-moz-appearance:textfield] focus:z-10 bg-slate-50'
-            value={(columnFilterValue as [number, number])?.[0] ?? ''}
-            onChange={e =>
-              column.setFilterValue((old: [number, number]) => [
-                e.target.value ? Number(e.target.value) : undefined,
-                old?.[1]
-              ])
-            }
-            placeholder='Min'
-            type='number'
-          />
-          <Input
-            id={`${id}-range-2`}
-            className='-ms-px flex-1 rounded-l-none [-moz-appearance:textfield] focus:z-10 bg-slate-50'
-            value={(columnFilterValue as [number, number])?.[1] ?? ''}
-            onChange={e =>
-              column.setFilterValue((old: [number, number]) => [
-                old?.[0],
-                e.target.value ? Number(e.target.value) : undefined
-              ])
-            }
-            placeholder='Max'
-            type='number'
-          />
-        </div>
-      </div>
-    )
-  }
-
   if (filterVariant === 'select') {
-    const selectItems = [
+    const selectItems = column.id === 'status' ? [
       { label: 'Tous', value: 'all' },
-      ...sortedUniqueValues.map(value => ({
-        label: String(value),
-        value: String(value)
-      }))
+      { label: 'Actif', value: 'ACTIVE' },
+      { label: 'Non Actif', value: 'ARCHIVED' }
+    ] : [
+      { label: 'Tous', value: 'all' },
     ]
+
+    const selectedItem = selectItems.find(item => item.value === (columnFilterValue?.toString() ?? 'all'));
 
     return (
       <div className='*:not-first:mt-2'>
         <Label htmlFor={`${id}-select`} className="text-slate-600 mb-1.5 block">{columnHeader}</Label>
         <Select
-          items={selectItems}
           value={columnFilterValue?.toString() ?? 'all'}
           onValueChange={value => {
             column.setFilterValue(value === 'all' ? undefined : value)
           }}
         >
           <SelectTrigger id={`${id}-select`} className='w-full bg-slate-50'>
-            <SelectValue />
+            <span className="flex flex-1 text-left line-clamp-1 items-center gap-1.5">{selectedItem?.label ?? 'Tous'}</span>
           </SelectTrigger>
           <SelectContent className='p-1'>
             {selectItems.map(item => (
@@ -358,22 +384,5 @@ function Filter({ column }: { column: Column<Patient, unknown> }) {
     )
   }
 
-  return (
-    <div className='*:not-first:mt-2'>
-      <Label htmlFor={`${id}-input`} className="text-slate-600 mb-1.5 block">{columnHeader}</Label>
-      <div className='relative'>
-        <Input
-          id={`${id}-input`}
-          className='peer pl-9 bg-slate-50'
-          value={(columnFilterValue ?? '') as string}
-          onChange={e => column.setFilterValue(e.target.value)}
-          placeholder={`Rechercher par ${columnHeader.toLowerCase()}`}
-          type='text'
-        />
-        <div className='text-slate-400 pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50'>
-          <SearchIcon size={16} />
-        </div>
-      </div>
-    </div>
-  )
+  return null
 }

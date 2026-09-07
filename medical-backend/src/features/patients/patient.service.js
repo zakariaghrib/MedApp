@@ -21,17 +21,57 @@ class PatientService {
   }
 
   /**
-   * Récupérer tous les patients non archivés
+   * Récupérer les patients avec pagination, recherche, filtrage et tri
    */
-  async getAllPatients() {
-    return await prisma.patient.findMany({
-      where: {
-        status: 'ACTIVE'
-      },
-      orderBy: {
-        createdAt: 'desc'
+  async getAllPatients(params = {}) {
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = '', 
+      status, 
+      sortBy = 'createdAt', 
+      sortOrder = 'desc' 
+    } = params;
+    
+    const skip = (page - 1) * limit;
+
+    // Construire la clause Where
+    const where = {};
+    if (status && status !== 'all') {
+      where.status = status;
+    }
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { cin: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Effectuer les requêtes en parallèle (données et count)
+    const [data, total] = await prisma.$transaction([
+      prisma.patient.findMany({
+        where,
+        skip: Number(skip),
+        take: Number(limit),
+        orderBy: {
+          [sortBy]: sortOrder
+        }
+      }),
+      prisma.patient.count({ where })
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / limit)
       }
-    });
+    };
   }
 
   /**
@@ -81,6 +121,17 @@ class PatientService {
     return await prisma.patient.update({
       where: { id },
       data: { status: 'ARCHIVED' }
+    });
+  }
+
+  /**
+   * Supprimer définitivement un patient
+   */
+  async deletePatient(id) {
+    await this.getPatientById(id);
+
+    return await prisma.patient.delete({
+      where: { id }
     });
   }
 }

@@ -21,4 +21,7 @@ router.put('/:id', patientController.update);
 // Archiver un patient
 router.patch('/:id/archive', patientController.archive);
 
+// Supprimer un patient définitivement
+router.delete('/:id', patientController.delete);
+
 module.exports = router;
