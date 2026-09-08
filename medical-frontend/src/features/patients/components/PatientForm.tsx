@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { toast } from 'sonner';
 
 interface PatientFormProps {
   patient?: Patient;
@@ -53,6 +54,17 @@ export function PatientForm({ patient, onSuccess }: PatientFormProps) {
       return patientService.create(formattedData);
     },
     onSuccess: () => {
+      // Show success toast
+      if (patient?.id) {
+        toast.success('Patient modifié avec succès !', {
+          style: { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }
+        });
+      } else {
+        toast.success('Patient ajouté avec succès !', {
+          style: { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0' }
+        });
+      }
+      
       // Refresh the patients list
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       form.reset();
