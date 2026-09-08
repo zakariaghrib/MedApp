@@ -6,8 +6,11 @@ import { DashboardLayout } from "./features/dashboard/layout/DashboardLayout";
 import { DashboardPage } from "./features/dashboard/pages/DashboardPage";
 import { PatientsPage } from "./features/patients/pages/PatientsPage";
 import { PatientProfilePage } from "./features/patients/pages/PatientProfilePage";
+import { AgendaPage } from "./features/appointments/pages/AgendaPage";
 
 const queryClient = new QueryClient();
+
+import { Toaster } from "@/components/ui/sonner";
 
 function App() {
   return (
@@ -24,13 +27,17 @@ function App() {
             {/* Patients route */}
             <Route path="patients" element={<PatientsPage />} />
             <Route path="patients/:id" element={<PatientProfilePage />} />
-            <Route path="agenda" element={<div>Agenda Page Placeholder</div>} />
+            
+            {/* Agenda route */}
+            <Route path="agenda" element={<AgendaPage />} />
+            
             <Route path="consultations" element={<div>Consultations Page Placeholder</div>} />
             <Route path="facturation" element={<div>Facturation Page Placeholder</div>} />
             <Route path="settings" element={<div>Settings Page Placeholder</div>} />
           </Route>
         </Routes>
       </BrowserRouter>
+      <Toaster position="top-right" />
     </QueryClientProvider>
   );
 }
