@@ -16,6 +16,10 @@ app.use('/api/auth', authRoutes);
 const patientRoutes = require('./features/patients/patient.routes');
 app.use('/api/patients', patientRoutes);
 
+// Branchement des routes appointments
+const appointmentRoutes = require('./features/appointments/appointment.routes');
+app.use('/api/appointments', appointmentRoutes);
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'API du cabinet médical opérationnelle' });
 });
