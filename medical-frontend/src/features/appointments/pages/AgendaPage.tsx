@@ -40,8 +40,8 @@ export function AgendaPage() {
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string, status: string }) => appointmentService.updateStatus(id, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['appointments'] });
       setIsSheetOpen(false);
       toast.success("Statut mis à jour");
     }
@@ -49,12 +49,53 @@ export function AgendaPage() {
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) => appointmentService.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['appointments'] });
       setIsSheetOpen(false);
       toast.success("Rendez-vous annulé");
     }
   });
+
+  const updateTimeMutation = useMutation({
+    mutationFn: ({ id, dateTime }: { id: string, dateTime: string }) => appointmentService.updateTime(id, dateTime),
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['appointments'] });
+      toast.success("Heure modifiée");
+    }
+  });
+
+  const handleDragStart = (e: React.DragEvent, apt: any) => {
+    e.dataTransfer.setData("appointmentId", apt.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); 
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e: React.DragEvent, targetDay: Date) => {
+    e.preventDefault();
+    const aptId = e.dataTransfer.getData("appointmentId");
+    if (!aptId) return;
+
+    const column = e.currentTarget as HTMLElement;
+    const rect = column.getBoundingClientRect();
+    const y = Math.max(0, e.clientY - rect.top);
+    
+    let totalMinutesFrom8AM = (y / 160) * 60;
+    totalMinutesFrom8AM = Math.round(totalMinutesFrom8AM / 15) * 15;
+    
+    let hour = 8 + Math.floor(totalMinutesFrom8AM / 60);
+    let minutes = totalMinutesFrom8AM % 60;
+
+    if (hour < 8) { hour = 8; minutes = 0; }
+    if (hour > 18 || (hour === 18 && minutes > 0)) { hour = 18; minutes = 0; }
+
+    const newDateTime = new Date(targetDay);
+    newDateTime.setHours(hour, minutes, 0, 0);
+
+    updateTimeMutation.mutate({ id: aptId, dateTime: newDateTime.toISOString() });
+  };
 
   const handlePrev = () => setCurrentDate(view === "day" ? subDays(currentDate, 1) : subDays(currentDate, 7));
   const handleNext = () => setCurrentDate(view === "day" ? addDays(currentDate, 1) : addDays(currentDate, 7));
@@ -62,11 +103,11 @@ export function AgendaPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'SCHEDULED': return 'border-l-blue-500 bg-blue-50/80';
-      case 'WAITING': return 'border-l-amber-500 bg-amber-50/80';
-      case 'COMPLETED': return 'border-l-emerald-500 bg-emerald-50/80';
-      case 'CANCELED': return 'border-l-slate-400 bg-slate-100 opacity-60';
-      default: return 'border-l-slate-500 bg-white';
+      case 'SCHEDULED': return 'bg-blue-50 border-blue-500 border-y-blue-200 border-r-blue-200 text-blue-900 hover:bg-blue-100';
+      case 'WAITING': return 'bg-amber-50 border-amber-500 border-y-amber-200 border-r-amber-200 text-amber-900 hover:bg-amber-100';
+      case 'COMPLETED': return 'bg-emerald-50 border-emerald-500 border-y-emerald-200 border-r-emerald-200 text-emerald-900 hover:bg-emerald-100';
+      case 'CANCELED': return 'bg-slate-100 border-slate-400 border-y-slate-200 border-r-slate-200 text-slate-500 opacity-80 hover:bg-slate-200';
+      default: return 'bg-white border-slate-500 border-y-slate-200 border-r-slate-200 text-slate-900 hover:bg-slate-50';
     }
   };
 
@@ -121,7 +162,7 @@ export function AgendaPage() {
         
         {/* En-tête des jours */}
         <div className="flex border-b border-slate-200 bg-slate-50/50">
-          <div className="w-16 flex-none border-r border-slate-200"></div> {/* Coin vide (Heures) */}
+          <div className="w-24 flex-none border-r border-slate-200"></div> {/* Coin vide (Heures) */}
           <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}>
             {days.map((day, i) => (
               <div key={i} className="py-3 text-center border-r border-slate-100 last:border-r-0">
@@ -136,12 +177,12 @@ export function AgendaPage() {
 
         {/* Grille des heures et rendez-vous */}
         <div className="flex-1 overflow-y-auto relative">
-          <div className="flex min-h-max">
+          <div className="flex min-h-max pt-4">
             
             {/* Colonne des heures */}
-            <div className="w-16 flex-none bg-slate-50/30 border-r border-slate-200 relative">
+            <div className="w-24 flex-none bg-slate-50/30 border-r border-slate-200 relative">
               {hours.map((hour) => (
-                <div key={hour} className="h-20 relative border-b border-slate-100">
+                <div key={hour} className="h-40 relative border-b border-slate-100">
                   <span className="absolute -top-2.5 right-2 text-xs font-medium text-slate-400">
                     {hour.toString().padStart(2, '0')}:00
                   </span>
@@ -155,16 +196,23 @@ export function AgendaPage() {
               {/* Lignes horizontales pour la grille (heures) */}
               <div className="absolute inset-0 pointer-events-none">
                 {hours.map((hour) => (
-                  <div key={hour} className="h-20 border-b border-slate-100 w-full flex flex-col">
+                  <div key={hour} className="h-40 border-b border-slate-200 w-full flex flex-col">
+                    <div className="flex-1 border-b border-dashed border-slate-100/50"></div>
+                    <div className="flex-1 border-b border-dashed border-slate-200/60"></div>
+                    <div className="flex-1 border-b border-dashed border-slate-100/50"></div>
                     <div className="flex-1"></div>
-                    <div className="flex-1 border-t border-dashed border-slate-100/60"></div>
                   </div>
                 ))}
               </div>
 
               {/* Colonnes verticales (jours) */}
               {days.map((day, dayIndex) => (
-                <div key={dayIndex} className="relative border-r border-slate-100/50 last:border-r-0 h-full min-h-[880px]">
+                <div 
+                  key={dayIndex} 
+                  className="relative border-r border-slate-100/50 last:border-r-0 h-full min-h-[1760px]"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, day)}
+                >
                   
                   {/* Cartes de Rendez-vous */}
                   {!isLoading && appointments
@@ -174,10 +222,10 @@ export function AgendaPage() {
                       const hour = date.getHours();
                       const minutes = date.getMinutes();
                       
-                      // Calcul de la position (basé sur 08:00 = top 0, chaque heure = 80px)
-                      const top = (hour - 8) * 80 + (minutes / 60) * 80;
-                      // Hauteur fixe pour l'exemple (ex: 45min = 60px)
-                      const height = 60; 
+                      // Calcul de la position (basé sur 08:00 = top 0, chaque heure = 160px)
+                      const top = (hour - 8) * 160 + (minutes / 60) * 160;
+                      // Hauteur fixe (ex: 30 minutes = 80px)
+                      const height = 80; 
 
                       // Si l'heure est en dehors de la plage (08-18), ne pas afficher
                       if (hour < 8 || hour >= 19) return null;
@@ -185,18 +233,22 @@ export function AgendaPage() {
                       return (
                         <div
                           key={apt.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, apt)}
                           onClick={() => {
                             setSelectedAppointment(apt);
                             setIsSheetOpen(true);
                           }}
-                          className={`absolute left-1 right-1 rounded-md p-2 text-xs cursor-pointer overflow-hidden border border-l-4 shadow-sm hover:shadow-md transition-shadow ${getStatusColor(apt.status)}`}
-                          style={{ top: `${top}px`, height: `${height}px`, zIndex: 10 }}
+                          className={`absolute left-1 right-1 rounded-md p-2 flex flex-col cursor-pointer overflow-hidden border border-l-4 shadow-sm hover:shadow-md transition-all z-10 hover:z-20 hover:-translate-y-0.5 ${getStatusColor(apt.status)}`}
+                          style={{ top: `${top}px`, height: `${height}px` }}
                         >
-                          <p className="font-bold text-slate-800 truncate">
+                          <p className="font-semibold text-xs sm:text-sm leading-tight truncate">
                             {apt.patient.firstName} {apt.patient.lastName}
                           </p>
-                          <p className="text-slate-600 truncate mt-0.5">
-                            {format(date, "HH:mm")} - {apt.reason || 'Consultation'}
+                          <p className="text-[10px] sm:text-xs opacity-90 leading-tight truncate mt-0.5 font-medium flex items-center gap-1">
+                            <span>{format(date, "HH:mm")}</span>
+                            <span>•</span>
+                            <span className="truncate">{apt.reason || 'Consultation'}</span>
                           </p>
                         </div>
                       );
