@@ -11,6 +11,9 @@ router.post('/', appointmentController.create);
 // Mettre à jour le statut d'un rendez-vous
 router.put('/:id/status', appointmentController.updateStatus);
 
+// Mettre à jour l'heure d'un rendez-vous
+router.put('/:id/time', appointmentController.updateTime);
+
 // Supprimer un rendez-vous
 router.delete('/:id', appointmentController.delete);
 

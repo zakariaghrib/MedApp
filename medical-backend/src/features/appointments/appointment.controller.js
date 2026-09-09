@@ -43,6 +43,21 @@ class AppointmentController {
     }
   }
 
+  async updateTime(req, res) {
+    try {
+      const { id } = req.params;
+      const { dateTime } = req.body;
+      const appointment = await appointmentService.updateTime(id, dateTime);
+      return res.status(200).json({
+        success: true,
+        data: appointment
+      });
+    } catch (error) {
+      console.error('[AppointmentController] Error updating appointment time:', error);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+  }
+
   async delete(req, res) {
     try {
       const { id } = req.params;

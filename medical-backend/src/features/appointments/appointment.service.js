@@ -94,6 +94,21 @@ class AppointmentService {
   }
 
   /**
+   * Mettre à jour l'heure d'un rendez-vous
+   */
+  async updateTime(id, dateTime) {
+    return await prisma.appointment.update({
+      where: { id },
+      data: { dateTime: new Date(dateTime) },
+      include: {
+        patient: {
+          select: { id: true, firstName: true, lastName: true }
+        }
+      }
+    });
+  }
+
+  /**
    * Annuler ou supprimer un rendez-vous
    */
   async deleteAppointment(id) {
