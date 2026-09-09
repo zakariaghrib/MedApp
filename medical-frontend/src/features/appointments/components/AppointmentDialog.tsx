@@ -23,11 +23,13 @@ export function AppointmentDialog({ open, onOpenChange, defaultDate }: Appointme
   const debouncedSearch = useDebounce(searchTerm, 300);
   
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
-  const [dateTime, setDateTime] = useState<string>(
-    defaultDate 
-      ? new Date(defaultDate.getTime() - defaultDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-      : new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-  );
+  const getDefaultDateTime = () => {
+    const d = defaultDate ? new Date(defaultDate) : new Date();
+    d.setHours(9, 0, 0, 0); // Force 09:00 par défaut
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
+  const [dateTime, setDateTime] = useState<string>(getDefaultDateTime());
   const [reason, setReason] = useState<string>("");
 
   const { data: patientsData } = useQuery({
@@ -40,9 +42,9 @@ export function AppointmentDialog({ open, onOpenChange, defaultDate }: Appointme
 
   const createMutation = useMutation({
     mutationFn: (data: any) => appointmentService.create(data),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Rendez-vous créé avec succès");
-      queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      await queryClient.refetchQueries({ queryKey: ['appointments'] });
       onOpenChange(false);
       resetForm();
     },
@@ -57,10 +59,29 @@ export function AppointmentDialog({ open, onOpenChange, defaultDate }: Appointme
     setReason("");
   };
 
+  const datePart = dateTime.slice(0, 10);
+  const timePart = dateTime.slice(11, 16);
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDateTime(`${e.target.value}T${timePart}`);
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDateTime(`${datePart}T${e.target.value}`);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
       toast.error("Veuillez sélectionner un patient");
+      return;
+    }
+
+    const hour = parseInt(timePart.split(':')[0], 10);
+    const minute = parseInt(timePart.split(':')[1], 10);
+    
+    if (hour < 8 || hour > 18 || (hour === 18 && minute > 0)) {
+      toast.error("Veuillez choisir une heure entre 08:00 et 18:00");
       return;
     }
     
@@ -117,21 +138,34 @@ export function AppointmentDialog({ open, onOpenChange, defaultDate }: Appointme
             ) : (
               <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-md">
                 <span className="text-sm font-medium text-blue-900">{searchTerm}</span>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedPatientId("")} className="text-blue-600 h-6 px-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedPatientId("")} className="text-blue-600 h-6 px-2">
                   Changer
                 </Button>
               </div>
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label>Date et Heure</Label>
-            <Input 
-              type="datetime-local" 
-              value={dateTime}
-              onChange={(e) => setDateTime(e.target.value)}
-              required
-            />
+          <div className="flex gap-4">
+            <div className="flex-1 space-y-2">
+              <Label>Date</Label>
+              <Input 
+                type="date" 
+                value={datePart}
+                onChange={handleDateChange}
+                required
+              />
+            </div>
+            <div className="flex-1 space-y-2">
+              <Label>Heure (08:00 - 18:00)</Label>
+              <Input 
+                type="time" 
+                value={timePart}
+                onChange={handleTimeChange}
+                min="08:00"
+                max="18:00"
+                required
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
