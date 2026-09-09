@@ -28,6 +28,11 @@ export const appointmentService = {
     return response.data.data;
   },
 
+  async updateTime(id: string, dateTime: string) {
+    const response = await apiClient.put(`/${id}/time`, { dateTime });
+    return response.data.data;
+  },
+
   async delete(id: string) {
     const response = await apiClient.delete(`/${id}`);
     return response.data;
